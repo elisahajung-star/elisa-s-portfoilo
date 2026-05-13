@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, type User } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import type { User } from 'firebase/auth'; // 1. 타입 전용 임포트로 분리 (TS1484 에러 해결)
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 /**
- * 🚀 Firebase 설정.
+ * 🚀 Firebase 설정
  */
 const myFirebaseConfig = {
   apiKey: "AIzaSyDN5mBfnVniX8wf0c2oYJ8U6rE5h2g_S9o",
@@ -24,7 +25,9 @@ const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__f
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'elisa-portfolio';
+
+const rawAppId = typeof __app_id !== 'undefined' ? __app_id : 'elisa-portfolio';
+const appId = rawAppId.replace(/\//g, '_'); 
 
 const GlobalStyles = () => (
   <style dangerouslySetInnerHTML={{ __html: `
@@ -84,6 +87,14 @@ const defaultData = {
 
 type ViewType = 'ABOUT' | 'VALUES' | 'DREAM' | 'BUCKET';
 
+// 각 섹션 컴포넌트들이 받을 속성(Props)들의 타입을 명확하게 지정합니다. (에러 방지)
+interface SectionProps {
+  data: typeof defaultData;
+  isEditing: boolean;
+  updateText: (key: string, value: string) => void;
+  updateImage: (key: string, url: string) => void;
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [data, setData] = useState(defaultData);
@@ -110,7 +121,13 @@ export default function App() {
     if (!user) return;
     const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'portfolio', 'mainData');
     const unsubscribe = onSnapshot(docRef, (snapshot) => {
-      if (snapshot.exists()) setData(snapshot.data() as any);
+      if (snapshot.exists()) {
+        const fetchedData = snapshot.data();
+        setData(prev => ({
+          texts: { ...prev.texts, ...(fetchedData.texts || {}) },
+          images: { ...prev.images, ...(fetchedData.images || {}) }
+        }));
+      }
     });
     return () => unsubscribe();
   }, [user]);
@@ -142,7 +159,7 @@ export default function App() {
     <div className="min-h-screen relative">
       <GlobalStyles />
       <header className={`fixed top-0 w-full z-40 transition-all duration-500 overflow-hidden ${isScrolled ? 'h-[70px] bg-white shadow-md' : 'h-[400px] bg-[#333]'}`}>
-        <div className={`absolute inset-0 transition-opacity duration-500 ${isScrolled ? 'opacity-0' : 'opacity-100'}`} style={{ backgroundImage: `url('${data.images.header}')`, backgroundPosition: 'center', backgroundSize: 'cover' }}>
+        <div className={`absolute inset-0 transition-opacity duration-500 ${isScrolled ? 'opacity-0' : 'opacity-100'}`} style={{ backgroundImage: `url('${data.images.header || ''}')`, backgroundPosition: 'center', backgroundSize: 'cover' }}>
           <div className="absolute inset-0 bg-black/30 z-10" />
         </div>
         <div className={`relative z-20 w-full h-full flex transition-all duration-500 ${isScrolled ? 'flex-row items-center justify-between px-10' : 'flex-col items-center justify-center'}`}>
@@ -160,7 +177,7 @@ export default function App() {
       <main className="pt-[450px] pb-20 max-w-[900px] mx-auto px-5">
         <div className="bg-white rounded-[25px] p-10 shadow-sm animate-fade-in border border-black/5 min-h-[400px]">
           {view === 'ABOUT' && <AboutSection data={data} isEditing={isEditing} updateText={updateText} updateImage={updateImage} />}
-          {view === 'VALUES' && <ValuesSection data={data} isEditing={isEditing} updateText={updateText} />}
+          {view === 'VALUES' && <ValuesSection data={data} isEditing={isEditing} updateText={updateText} updateImage={updateImage} />}
           {view === 'DREAM' && <DreamSection data={data} isEditing={isEditing} updateText={updateText} updateImage={updateImage} />}
           {view === 'BUCKET' && <BucketSection data={data} isEditing={isEditing} updateText={updateText} updateImage={updateImage} />}
         </div>
@@ -177,7 +194,11 @@ export default function App() {
   );
 }
 
-function TabButton({ label, active, onClick, scrolled }: any) {
+// ---------------------------------------------------------
+// UI Components
+// ---------------------------------------------------------
+
+function TabButton({ label, active, onClick, scrolled }: { label: string, active: boolean, onClick: () => void, scrolled: boolean }) {
   return (
     <button onClick={onClick} className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${
       active ? 'bg-[#a4be7b] text-white' : scrolled ? 'text-gray-500 hover:bg-gray-100' : 'text-white border border-white/30 hover:bg-white/10'
@@ -186,19 +207,21 @@ function TabButton({ label, active, onClick, scrolled }: any) {
 }
 
 function EditableText({ value, onChange, isEditing }: { value: string, onChange: (v: string) => void, isEditing: boolean }) {
-  if (!isEditing) return <span>{value}</span>;
-  return <input className="bg-yellow-50 border-b border-yellow-300 px-1 outline-none w-full" value={value} onChange={e => onChange(e.target.value)} />;
+  if (!isEditing) return <span>{value || ''}</span>;
+  return <input className="bg-yellow-50 border-b border-yellow-300 px-1 outline-none w-full" value={value || ''} onChange={e => onChange(e.target.value)} />;
 }
 
+// 3. 타입 불일치 해결 (ReactNode 허용)
 function QABox({ q, a }: { q: React.ReactNode, a: React.ReactNode }) {
   return (
     <div className="border-b border-dashed border-gray-200 pb-4 mb-4 last:border-0">
-      <span className="text-[#a4be7b] font-bold block mb-1">Q. {q}</span>
+      <span className="text-[#a4be7b] font-bold block mb-1 flex items-center gap-1">Q. {q}</span>
       <div className="text-lg text-[#4e443f]">{a}</div>
     </div>
   );
 }
 
+// 2. 암시적 'any' 타입 해결 (url: string)
 function PhotoUploadButton({ onUpload, className }: { onUpload: (url: string) => void, className: string }) {
   return (
     <label className={`absolute ${className} bg-white p-2 rounded-full shadow-md cursor-pointer hover:scale-110 transition-all z-20`}>
@@ -207,7 +230,9 @@ function PhotoUploadButton({ onUpload, className }: { onUpload: (url: string) =>
         const file = e.target.files?.[0];
         if (file) {
           const reader = new FileReader();
-          reader.onload = (ev) => onUpload(ev.target?.result as string);
+          reader.onload = (ev) => {
+            if (ev.target?.result) onUpload(ev.target.result as string);
+          };
           reader.readAsDataURL(file);
         }
       }} />
@@ -215,7 +240,11 @@ function PhotoUploadButton({ onUpload, className }: { onUpload: (url: string) =>
   );
 }
 
-function AboutSection({ data, isEditing, updateText, updateImage }: any) {
+// ---------------------------------------------------------
+// Section Components
+// ---------------------------------------------------------
+
+function AboutSection({ data, isEditing, updateText, updateImage }: SectionProps) {
   return (
     <div>
       <h2 className="serif text-3xl mb-10">About Me</h2>
@@ -227,7 +256,7 @@ function AboutSection({ data, isEditing, updateText, updateImage }: any) {
         </div>
         <div className="w-full md:w-64">
           <div className="bg-white p-2 pb-10 shadow-lg rotate-1 relative group">
-            <img src={data.images.about} className="w-full h-72 object-cover" alt="About" />
+            <img src={data.images.about || ''} className="w-full h-72 object-cover" alt="About" />
             {isEditing && <PhotoUploadButton onUpload={(url: string) => updateImage('about', url)} className="bottom-4 right-4" />}
           </div>
         </div>
@@ -236,33 +265,33 @@ function AboutSection({ data, isEditing, updateText, updateImage }: any) {
   );
 }
 
-function ValuesSection({ data, isEditing, updateText }: any) {
+function ValuesSection({ data, isEditing, updateText }: SectionProps) {
   return (
     <div>
       <h2 className="serif text-3xl mb-10">My Values</h2>
       <div className="bg-[#fdfcf7] p-8 rounded-2xl border border-[#f0eee0] space-y-6">
-        <p className="font-bold text-[#8d7b68] text-lg">
+        <div className="font-bold text-[#8d7b68] text-lg">
           <EditableText value={data.texts.valuesRank} onChange={(v: string) => updateText('valuesRank', v)} isEditing={isEditing} />
-        </p>
-        <p className="text-lg leading-relaxed text-[#4e443f]">
+        </div>
+        <div className="text-lg leading-relaxed text-[#4e443f]">
           <EditableText value={data.texts.valuesDesc} onChange={(v: string) => updateText('valuesDesc', v)} isEditing={isEditing} />
-        </p>
+        </div>
       </div>
     </div>
   );
 }
 
-function DreamSection({ data, isEditing, updateText, updateImage }: any) {
+function DreamSection({ data, isEditing, updateText, updateImage }: SectionProps) {
   return (
     <div className="space-y-10">
       <h2 className="serif text-3xl">My Dream</h2>
-      <p className="text-xl font-bold text-[#a4be7b]">
+      <div className="text-xl font-bold text-[#a4be7b]">
         <EditableText value={data.texts.dreamTitle} onChange={(v: string) => updateText('dreamTitle', v)} isEditing={isEditing} />
-      </p>
+      </div>
       <div className="grid grid-cols-3 gap-4">
         {[1, 2, 3].map(i => (
           <div key={i} className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group">
-            <img src={(data.images as any)[`dream${i}`]} className="w-full h-full object-cover" alt={`Dream ${i}`} />
+            <img src={(data.images as any)[`dream${i}`] || ''} className="w-full h-full object-cover" alt={`Dream ${i}`} />
             {isEditing && <PhotoUploadButton onUpload={(url: string) => updateImage(`dream${i}`, url)} className="bottom-2 right-2" />}
           </div>
         ))}
@@ -275,13 +304,13 @@ function DreamSection({ data, isEditing, updateText, updateImage }: any) {
   );
 }
 
-function BucketSection({ data, isEditing, updateText, updateImage }: any) {
+function BucketSection({ data, isEditing, updateText, updateImage }: SectionProps) {
   return (
     <div>
       <h2 className="serif text-3xl mb-10">Bucket List</h2>
       <div className="space-y-8">
         <div className="relative group mb-10">
-            <img src={data.images.bucket1} className="w-full h-64 object-cover rounded-2xl shadow-sm" alt="Bucket" />
+            <img src={data.images.bucket1 || ''} className="w-full h-64 object-cover rounded-2xl shadow-sm" alt="Bucket" />
             {isEditing && <PhotoUploadButton onUpload={(url: string) => updateImage('bucket1', url)} className="bottom-4 right-4" />}
         </div>
         <QABox 
