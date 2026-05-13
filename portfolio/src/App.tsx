@@ -5,7 +5,7 @@ import type { User } from 'firebase/auth'; // 타입 전용 임포트 준수 (TS
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 /**
- * 🚀 Firebase 설정
+ * 🚀 Firebase 설정.
  */
 const myFirebaseConfig = {
   apiKey: "AIzaSyDN5mBfnVniX8wf0c2oYJ8U6rE5h2g_S9o",
