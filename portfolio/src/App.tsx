@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import type { User } from 'firebase/auth'; // 1. 타입 전용 임포트로 분리 (TS1484 에러 해결)
+import type { User } from 'firebase/auth'; // 타입 전용 임포트 준수 (TS1484 에러 해결)
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 /**
@@ -87,12 +87,15 @@ const defaultData = {
 
 type ViewType = 'ABOUT' | 'VALUES' | 'DREAM' | 'BUCKET';
 
-// 각 섹션 컴포넌트들이 받을 속성(Props)들의 타입을 명확하게 지정합니다. (에러 방지)
+// 엄격한 타입 지정을 위한 Key 타입 추출 (TS 인덱싱 에러 방어)
+export type TextKeys = keyof typeof defaultData.texts;
+export type ImageKeys = keyof typeof defaultData.images;
+
 interface SectionProps {
   data: typeof defaultData;
   isEditing: boolean;
-  updateText: (key: string, value: string) => void;
-  updateImage: (key: string, url: string) => void;
+  updateText: (key: TextKeys, value: string) => void;
+  updateImage: (key: ImageKeys, url: string) => void;
 }
 
 export default function App() {
@@ -138,11 +141,11 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const updateText = (key: string, value: string) => {
+  const updateText = (key: TextKeys, value: string) => {
     setData(prev => ({ ...prev, texts: { ...prev.texts, [key]: value } }));
   };
 
-  const updateImage = (key: string, url: string) => {
+  const updateImage = (key: ImageKeys, url: string) => {
     setData(prev => ({ ...prev, images: { ...prev.images, [key]: url } }));
   };
 
@@ -211,7 +214,7 @@ function EditableText({ value, onChange, isEditing }: { value: string, onChange:
   return <input className="bg-yellow-50 border-b border-yellow-300 px-1 outline-none w-full" value={value || ''} onChange={e => onChange(e.target.value)} />;
 }
 
-// 3. 타입 불일치 해결 (ReactNode 허용)
+// 명확한 ReactNode 타입 선언
 function QABox({ q, a }: { q: React.ReactNode, a: React.ReactNode }) {
   return (
     <div className="border-b border-dashed border-gray-200 pb-4 mb-4 last:border-0">
@@ -221,10 +224,10 @@ function QABox({ q, a }: { q: React.ReactNode, a: React.ReactNode }) {
   );
 }
 
-// 2. 암시적 'any' 타입 해결 (url: string)
-function PhotoUploadButton({ onUpload, className }: { onUpload: (url: string) => void, className: string }) {
+// 암시적 any 방지 및 className 타입 명확화
+function PhotoUploadButton({ onUpload, className }: { onUpload: (url: string) => void, className?: string }) {
   return (
-    <label className={`absolute ${className} bg-white p-2 rounded-full shadow-md cursor-pointer hover:scale-110 transition-all z-20`}>
+    <label className={`absolute ${className || ''} bg-white p-2 rounded-full shadow-md cursor-pointer hover:scale-110 transition-all z-20`}>
       <span>📷</span>
       <input type="file" className="hidden" onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -289,12 +292,15 @@ function DreamSection({ data, isEditing, updateText, updateImage }: SectionProps
         <EditableText value={data.texts.dreamTitle} onChange={(v: string) => updateText('dreamTitle', v)} isEditing={isEditing} />
       </div>
       <div className="grid grid-cols-3 gap-4">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group">
-            <img src={(data.images as any)[`dream${i}`] || ''} className="w-full h-full object-cover" alt={`Dream ${i}`} />
-            {isEditing && <PhotoUploadButton onUpload={(url: string) => updateImage(`dream${i}`, url)} className="bottom-2 right-2" />}
-          </div>
-        ))}
+        {[1, 2, 3].map(i => {
+          const dreamKey = `dream${i}` as ImageKeys; // 타입 캐스팅으로 인덱싱 오류 원천 차단
+          return (
+            <div key={i} className="aspect-square bg-gray-100 rounded-xl overflow-hidden relative group">
+              <img src={data.images[dreamKey] || ''} className="w-full h-full object-cover" alt={`Dream ${i}`} />
+              {isEditing && <PhotoUploadButton onUpload={(url: string) => updateImage(dreamKey, url)} className="bottom-2 right-2" />}
+            </div>
+          );
+        })}
       </div>
       <div className="space-y-6">
         <QABox q="이 직업의 매력" a={<EditableText value={data.texts.dreamPro} onChange={(v: string) => updateText('dreamPro', v)} isEditing={isEditing} />} />
